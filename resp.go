@@ -10,14 +10,13 @@ import (
 )
 
 // Module to serialize and deserialize RESP protocol messages
-//
 
 const (
-	STRING  = '+'
-	ERROR   = '-'
-	INTEGER = ':'
-	BULK    = '$'
-	ARRAY   = '*'
+	STRING     = '+'
+	ERROR      = '-'
+	INTEGER    = ':'
+	BULKSTRING = '$'
+	ARRAY      = '*'
 )
 
 type Payload struct {
@@ -45,39 +44,67 @@ func (r *RespReader) Read() (Payload, error) {
 		return Payload{}, err
 	}
 
-	if firstByte != ARRAY {
-		return Payload{}, errors.New("wrong payload format. Expecting an array of bulk string")
+	switch firstByte {
+	case ARRAY:
+		return r.readArray()
+	case BULKSTRING:
+		return r.readBulkString()
+	default:
+		err := fmt.Errorf("Unexpected first byte of payload")
+		return Payload{}, err
 	}
+}
 
-	b, _ := r.reader.ReadByte()
+// Expected format 2\r\n<payload>\r\n<payload>\r\n
+func (r *RespReader) readArray() (Payload, error) {
+
+	p := Payload{}
+	b, err := r.reader.ReadBytes('\n')
+	if err != nil {
+		return Payload{}, errors.New("wrong payload format. unable to parse size")
+	}
 	size, _ := strconv.ParseInt(string(b), 10, 64)
 
-	// consume /r/n
-	r.reader.ReadByte()
-	r.reader.ReadByte()
+	p.array = make([]Payload, 0)
+	for i := 0; i < int(size); i++ {
+		payload, err := r.readBulkString()
+		if err != nil {
+			return p, err
+		}
 
-	// Parse each line using scanner
-	scanner := bufio.NewScanner(&r.reader)
-	var count int64
-	for scanner.Scan() {
-		count += 1
-		bulkString := scanner.Text()
+		p.array = append(p.array, payload)
 	}
-
-	if count != size {
-		return Payload{}, errors.New("wrong format. Received size is not the same")
-	}
+	return p, nil
 }
 
-func (r *RespReader) ReadBulkString() (Payload, error) {
-	
-}
-func retrieveUsefulData(s string) string {
-	index := strings.Index(s, "\r\n")
-	if index == -1 {
-		return string("")
+// Expected format $\r\n<payload>\r\n
+func (r *RespReader) readBulkString() (Payload, error) {
+
+	firstByte, err := r.reader.ReadByte()
+	if err != nil {
+		err := fmt.Errorf("failed to parse first byte due to %q", err)
+		return Payload{}, err
 	}
-	return s[:index]
+
+	if firstByte != BULKSTRING {
+		err := fmt.Errorf("first byte is not the one expected for bulk")
+		return Payload{}, err
+	}
+
+	b, err := r.reader.ReadBytes('\n')
+	if err != nil {
+		return Payload{}, errors.New("wrong payload format. unable to parse size")
+	}
+	size, _ := strconv.ParseInt(string(b), 10, 64)
+
+	p := Payload{}
+
+	p.bulk, err = r.reader.ReadString('\n')
+	if int64(len(p.bulk)) != size {
+		return Payload{}, errors.New("wrong payload format. bulk string size is not the same as the size in the payload")
+	}
+
+	return p, nil
 }
 
 // Parse payload that follows RESP protocol into payload struct
