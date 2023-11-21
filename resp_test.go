@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -8,15 +9,13 @@ import (
 
 func TestSerialize(t *testing.T) {
 
-	respString := "$5\r\nhello\r\n"
-	res, err := deserialize(respString)
+	t.Run("Bulk String", func(t *testing.T) {
+		bulkString := "$5\r\nhello\r\n"
+		respReader := NewRespReader(strings.NewReader(bulkString))
 
-	require.NoError(t, err)
-	require.Equal(t, res.str, "hello")
+		res, err := respReader.Read()
+		require.NoError(t, err)
+		require.Equal(t, "hello", res.Bulk)
+	})
 
-	// respString = "*-1\r\n"
-	// res, err = deserialize(respString)
-
-	// require.NoError(t, err)
-	// require.Equal(t, res.isNull, true)
 }
