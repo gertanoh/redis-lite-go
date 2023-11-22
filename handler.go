@@ -4,13 +4,26 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
+	"fmt"
+	"strconv"
 )
 
 var handlers = map[string]func([]Payload) Payload{
 	"PING":    ping,
 	"COMMAND": command,
 	"ECHO":    echo,
+	"SET":     set,
+	"GET":     get,
 }
+
+
+type stringValue struct {
+	value string
+	expire time.Time
+}
+
+var stringMap = map[string]stringValue{}
 
 func HandleConnection(conn net.Conn) {
 
@@ -74,4 +87,44 @@ func command(p []Payload) Payload {
 		Payload{DataType: string(BULKSTRING), Bulk: "COMMAND"},
 		Payload{DataType: string(BULKSTRING), Bulk: "PING"},
 	}}
+}
+
+func set(p []Payload) Payload {
+
+	key := p[0].Bulk
+	value := p[1].Bulk
+	var expire time.Time
+
+	// Only handling EX options
+	if len(p) >= 4 {
+		ex_cmd := p[2].Bulk
+		ex_val := p[3].Bulk
+		if ex_cmd == "EX" {
+			// Set expiration time
+			expireInSecs, err := strconv.Atoi(ex_val)
+			if err != nil {
+				expire = time.Now().Add(time.Duration(expireInSecs) * time.Second)
+			}
+		}
+	}
+
+
+	stringMap[key] = stringValue{value, expire}
+	return Payload{DataType: string(STRING), Str: "OK"}
+}
+
+func get(p []Payload) Payload {
+	key := p[0].Bulk
+	if _, ok := stringMap[key]; ok {
+		if stringMap[key].expire.IsZero() {
+			return Payload{DataType: string(STRING), Str: stringMap[key].value}
+		}
+		if stringMap[key].expire.Before(time.Now()) {
+			delete(stringMap, key)
+			return NilValue
+		}
+
+		return Payload{DataType: string(STRING), Str: stringMap[key].value}
+	}
+	return NilValue
 }
