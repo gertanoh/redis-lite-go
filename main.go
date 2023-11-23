@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 )
 
 func main() {
@@ -19,8 +20,8 @@ func main() {
 		conn, err := l.Accept()
 		if err != nil {
 			log.Fatal(err)
+			os.Exit(1)
 		}
-
 		go HandleConnection(conn)
 	}
 }

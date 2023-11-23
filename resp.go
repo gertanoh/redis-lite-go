@@ -50,7 +50,9 @@ func (r *RespReader) Read() (Payload, error) {
 
 	firstByte, err := r.reader.ReadByte()
 	if err != nil {
-		err := fmt.Errorf("failed to parse first byte due to %q", err)
+		if err != io.EOF {
+			err = fmt.Errorf("failed to parse first byte due to %q", err)
+		}
 		return Payload{}, err
 	}
 	switch firstByte {

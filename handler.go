@@ -1,12 +1,13 @@
 package main
 
 import (
+	"io"
 	"log"
 	"net"
-	"strings"
-	"time"
-	"fmt"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 var handlers = map[string]func([]Payload) Payload{
@@ -15,36 +16,31 @@ var handlers = map[string]func([]Payload) Payload{
 	"ECHO":    echo,
 	"SET":     set,
 	"GET":     get,
+	"EXISTS":  exist,
+	"DEL":     del,
+	"INCR":    incr,
 }
 
-
 type stringValue struct {
-	value string
+	value  string
 	expire time.Time
 }
 
 var stringMap = map[string]stringValue{}
+var stringMapLock sync.RWMutex
 
-func HandleConnection(conn net.Conn) {
-
-	respReader := NewRespReader(conn)
-	cmd, err := respReader.Read()
-
-	if err != nil {
-		log.Println(err)
-	}
-
+func processRequest(cmd *Payload) Payload {
 	p := Payload{}
 	if cmd.DataType != string(ARRAY) {
 		p.DataType = string(ERROR)
 		p.Str = "Expected array of bulk strings"
-		return
+		return p
 	}
 
 	if len(cmd.Array) == 0 {
 		p.DataType = string(ERROR)
 		p.Str = "Null array command"
-		return
+		return p
 	}
 
 	// first bulk string is the command
@@ -58,13 +54,37 @@ func HandleConnection(conn net.Conn) {
 		response.DataType = string(ERROR)
 		response.Str = "Unknown command"
 	}
-	writer := NewRespWriter(conn)
-	err = writer.Write(&response)
-	if err != nil {
-		log.Println(err)
-	}
 
-	conn.Close()
+	return response
+}
+
+func HandleConnection(conn net.Conn) {
+
+	defer conn.Close()
+	respReader := NewRespReader(conn)
+	writer := NewRespWriter(conn)
+
+	for {
+		cmd, err := respReader.Read()
+		var response Payload
+
+		if err != nil {
+			if err != io.EOF {
+				log.Println(err)
+				response.DataType = string(ERROR)
+				response.Str = "Invalid request format"
+			} else {
+				return
+			}
+		} else {
+			response = processRequest(&cmd)
+		}
+
+		err = writer.Write(&response)
+		if err != nil {
+			log.Println("writer : ", err)
+		}
+	}
 }
 
 func ping(p []Payload) Payload {
@@ -83,9 +103,9 @@ func echo(p []Payload) Payload {
 
 func command(p []Payload) Payload {
 	return Payload{DataType: string(ARRAY), Array: []Payload{
-		Payload{DataType: string(BULKSTRING), Bulk: "ECHO"},
-		Payload{DataType: string(BULKSTRING), Bulk: "COMMAND"},
-		Payload{DataType: string(BULKSTRING), Bulk: "PING"},
+		{DataType: string(BULKSTRING), Bulk: "ECHO"},
+		{DataType: string(BULKSTRING), Bulk: "COMMAND"},
+		{DataType: string(BULKSTRING), Bulk: "PING"},
 	}}
 }
 
@@ -102,19 +122,21 @@ func set(p []Payload) Payload {
 		if ex_cmd == "EX" {
 			// Set expiration time
 			expireInSecs, err := strconv.Atoi(ex_val)
-			if err != nil {
+			if err == nil {
 				expire = time.Now().Add(time.Duration(expireInSecs) * time.Second)
 			}
 		}
 	}
-
-
+	stringMapLock.Lock()
+	defer stringMapLock.Unlock()
 	stringMap[key] = stringValue{value, expire}
 	return Payload{DataType: string(STRING), Str: "OK"}
 }
 
 func get(p []Payload) Payload {
 	key := p[0].Bulk
+	stringMapLock.RLock()
+	defer stringMapLock.RUnlock()
 	if _, ok := stringMap[key]; ok {
 		if stringMap[key].expire.IsZero() {
 			return Payload{DataType: string(STRING), Str: stringMap[key].value}
@@ -127,4 +149,70 @@ func get(p []Payload) Payload {
 		return Payload{DataType: string(STRING), Str: stringMap[key].value}
 	}
 	return NilValue
+}
+
+func exist(p []Payload) Payload {
+	stringMapLock.RLock()
+	defer stringMapLock.RUnlock()
+
+	var count int
+
+	for i := 0; i < len(p); i++ {
+		key := p[i].Bulk
+		if _, ok := stringMap[key]; ok {
+			if stringMap[key].expire.IsZero() {
+				count++
+			} else if stringMap[key].expire.After(time.Now()) {
+				count++
+			}
+		}
+	}
+	return Payload{DataType: string(INTEGER), Num: count}
+}
+
+func del(p []Payload) Payload {
+	stringMapLock.Lock()
+	defer stringMapLock.Unlock()
+
+	var count int
+
+	for i := 0; i < len(p); i++ {
+		key := p[i].Bulk
+		if _, ok := stringMap[key]; ok {
+			delete(stringMap, key)
+			count++
+		}
+	}
+	return Payload{DataType: string(INTEGER), Num: count}
+}
+
+func incr(p []Payload) Payload {
+	stringMapLock.Lock()
+	defer stringMapLock.Unlock()
+
+	var count int
+	var strValue string
+
+	key := p[0].Bulk
+	if _, ok := stringMap[key]; ok {
+		if stringMap[key].expire.IsZero() {
+			strValue = stringMap[key].value
+		}
+		if stringMap[key].expire.Before(time.Now()) {
+			delete(stringMap, key)
+		} else {
+			strValue = stringMap[key].value
+		}
+	}
+	if strValue != "" {
+		countOn64, err := strconv.ParseInt(strValue, 10, 64)
+		if err != nil {
+			return Payload{DataType: string(ERROR), Str: "Key value is not integer"}
+		}
+		count = int(countOn64)
+	}
+	count++
+	countStrValue := strconv.Itoa(count)
+	stringMap[key] = stringValue{value: countStrValue}
+	return Payload{DataType: string(INTEGER), Num: count}
 }
