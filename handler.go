@@ -29,7 +29,26 @@ type stringValue struct {
 var stringMap = map[string]stringValue{}
 var stringMapLock sync.RWMutex
 
-func processRequest(cmd *Payload) Payload {
+func updateInMemoryStore(request string, params []Payload) Payload {
+	var response Payload
+	if _, ok := handlers[request]; ok {
+		response = handlers[request](params)
+	} else {
+		response.DataType = string(ERROR)
+		response.Str = "Unknown command"
+	}
+	return response
+}
+
+func parseRequest(cmd *Payload) (string, []Payload) {
+	// first bulk string is the command
+	request := strings.ToUpper(cmd.Array[0].Bulk)
+	params := cmd.Array[1:]
+
+	return request, params
+}
+
+func processRequest(cmd *Payload, aof *Aof) Payload {
 	p := Payload{}
 	if cmd.DataType != string(ARRAY) {
 		p.DataType = string(ERROR)
@@ -43,22 +62,17 @@ func processRequest(cmd *Payload) Payload {
 		return p
 	}
 
-	// first bulk string is the command
-	request := strings.ToUpper(cmd.Array[0].Bulk)
-	params := cmd.Array[1:]
-
-	var response Payload
-	if _, ok := handlers[request]; ok {
-		response = handlers[request](params)
-	} else {
-		response.DataType = string(ERROR)
-		response.Str = "Unknown command"
+	request, params := parseRequest(cmd)
+	if request == "SET" {
+		aof.Write(cmd)
 	}
+
+	response := updateInMemoryStore(request, params)
 
 	return response
 }
 
-func HandleConnection(conn net.Conn) {
+func HandleConnection(conn net.Conn, aof *Aof) {
 
 	defer conn.Close()
 	respReader := NewRespReader(conn)
@@ -77,7 +91,7 @@ func HandleConnection(conn net.Conn) {
 				return
 			}
 		} else {
-			response = processRequest(&cmd)
+			response = processRequest(&cmd, aof)
 		}
 
 		err = writer.Write(&response)

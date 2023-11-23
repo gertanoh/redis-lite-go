@@ -16,12 +16,17 @@ func main() {
 	defer l.Close()
 	fmt.Println("Listenning on port :6379")
 
+	aof, err := NewAof()
+	if err != nil {
+		panic(err)
+	}
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			log.Fatal(err)
 			os.Exit(1)
 		}
-		go HandleConnection(conn)
+		go HandleConnection(conn, aof)
 	}
 }
