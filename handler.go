@@ -63,7 +63,7 @@ func processRequest(cmd *Payload, aof *Aof) Payload {
 	}
 
 	request, params := parseRequest(cmd)
-	if request == "SET" {
+	if request == "SET" || request == "INCR"{
 		aof.Write(cmd)
 	}
 
