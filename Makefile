@@ -32,12 +32,22 @@ audit:
 	go mod tidy
 	go mod verify
 
+.PHONY: test
+test:
+	@echo 'Running tests'
+	go test -race -vet=off ./...
 
 # ################## Build ######################
-linker_flags = '-s -w'
-
+current_time = $(shell date --iso-8601=seconds)
+git_desc = $(shell git describe --always --dirty --tags --long)
+linker_flags = '-X main.buildTime=${current_time}  -X main.version=${git_desc}'
 ## build: build the application
 .PHONY: build
 build:
 	@echo 'Building redis-lite'
 	go build -ldflags=${linker_flags} -o=./redis-lite
+
+.PHONY: cli
+cli:
+	@echo 'Building redis-lite'
+	go build -ldflags=${linker_flags} -o=./redis-lite-cli cli/main.go

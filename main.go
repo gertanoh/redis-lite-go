@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -9,8 +10,21 @@ import (
 	"github.com/ger/redis-lite-go/internal/handler"
 )
 
+var (
+	buildTime string
+	version   string
+)
+
 func main() {
 
+	displayVersion := flag.Bool("version", false, "Display version and exit")
+	flag.Parse()
+
+	if *displayVersion {
+		fmt.Printf("Version:\t%s\n", version)
+		fmt.Printf("Build time:\t%s\n", buildTime)
+		os.Exit(0)
+	}
 	l, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		log.Fatal(err)
