@@ -1,11 +1,23 @@
+# ################## Helpers ######################
 
-################### Dev ######################
+## help: print this help message
+.PHONY: help
+help:
+	@echo 'Usage:'
+	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'
+
+
+.PHONY: confirm
+confirm:
+	@echo -n "Are you sure? [y/N] " && read ans && [ $${ans:-N} = y ]
+
+# ################## Dev ######################
 
 .PHONY: redis
 redis:
 	@go run .
 	
-################### QA ######################
+# ################## QA ######################
 .PHONY: audit
 audit:
 	@echo 'Formatting code...'
@@ -21,7 +33,7 @@ audit:
 	go mod verify
 
 
-################### Build ######################
+# ################## Build ######################
 linker_flags = '-s -w'
 
 ## build: build the application
