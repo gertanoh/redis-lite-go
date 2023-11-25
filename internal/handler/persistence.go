@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"io"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/ger/redis-lite-go/internal/resp"
 )
 
 // Implement persistence for the redis lite server
@@ -65,7 +67,7 @@ func (a *Aof) Read() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	respReader := NewRespReader(a.file)
+	respReader := resp.NewRespReader(a.file)
 	for {
 		cmd, err := respReader.Read()
 		if err != nil {
@@ -74,13 +76,13 @@ func (a *Aof) Read() {
 			}
 			return
 		}
-		request, params := parseRequest(&cmd)
+		request, params := resp.ParseRequest(&cmd)
 		updateInMemoryStore(request, params)
 	}
 
 }
 
-func (a *Aof) Write(p *Payload) error {
+func (a *Aof) Write(p *resp.Payload) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

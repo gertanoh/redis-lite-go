@@ -1,16 +1,17 @@
-package main
+package handler
 
 import (
 	"io"
 	"log"
 	"net"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/ger/redis-lite-go/internal/resp"
 )
 
-var handlers = map[string]func([]Payload) Payload{
+var handlers = map[string]func([]resp.Payload) resp.Payload{
 	"PING":    ping,
 	"COMMAND": command,
 	"ECHO":    echo,
@@ -29,41 +30,33 @@ type stringValue struct {
 var stringMap = map[string]stringValue{}
 var stringMapLock sync.RWMutex
 
-func updateInMemoryStore(request string, params []Payload) Payload {
-	var response Payload
+func updateInMemoryStore(request string, params []resp.Payload) resp.Payload {
+	var response resp.Payload
 	if _, ok := handlers[request]; ok {
 		response = handlers[request](params)
 	} else {
-		response.DataType = string(ERROR)
+		response.DataType = string(resp.ERROR)
 		response.Str = "Unknown command"
 	}
 	return response
 }
 
-func parseRequest(cmd *Payload) (string, []Payload) {
-	// first bulk string is the command
-	request := strings.ToUpper(cmd.Array[0].Bulk)
-	params := cmd.Array[1:]
-
-	return request, params
-}
-
-func processRequest(cmd *Payload, aof *Aof) Payload {
-	p := Payload{}
-	if cmd.DataType != string(ARRAY) {
-		p.DataType = string(ERROR)
+func processRequest(cmd *resp.Payload, aof *Aof) resp.Payload {
+	p := resp.Payload{}
+	if cmd.DataType != string(resp.ARRAY) {
+		p.DataType = string(resp.ERROR)
 		p.Str = "Expected array of bulk strings"
 		return p
 	}
 
 	if len(cmd.Array) == 0 {
-		p.DataType = string(ERROR)
+		p.DataType = string(resp.ERROR)
 		p.Str = "Null array command"
 		return p
 	}
 
-	request, params := parseRequest(cmd)
-	if request == "SET" || request == "INCR"{
+	request, params := resp.ParseRequest(cmd)
+	if request == "SET" || request == "INCR" {
 		aof.Write(cmd)
 	}
 
@@ -75,17 +68,17 @@ func processRequest(cmd *Payload, aof *Aof) Payload {
 func HandleConnection(conn net.Conn, aof *Aof) {
 
 	defer conn.Close()
-	respReader := NewRespReader(conn)
-	writer := NewRespWriter(conn)
+	respReader := resp.NewRespReader(conn)
+	writer := resp.NewRespWriter(conn)
 
 	for {
 		cmd, err := respReader.Read()
-		var response Payload
+		var response resp.Payload
 
 		if err != nil {
 			if err != io.EOF {
 				log.Println(err)
-				response.DataType = string(ERROR)
+				response.DataType = string(resp.ERROR)
 				response.Str = "Invalid request format"
 			} else {
 				return
@@ -101,29 +94,29 @@ func HandleConnection(conn net.Conn, aof *Aof) {
 	}
 }
 
-func ping(p []Payload) Payload {
+func ping(p []resp.Payload) resp.Payload {
 	if len(p) == 0 {
-		return Payload{DataType: string(STRING), Str: "PONG"}
+		return resp.Payload{DataType: string(resp.STRING), Str: "PONG"}
 	}
-	return Payload{DataType: string(STRING), Str: p[0].Bulk}
+	return resp.Payload{DataType: string(resp.STRING), Str: p[0].Bulk}
 }
 
-func echo(p []Payload) Payload {
+func echo(p []resp.Payload) resp.Payload {
 	if len(p) != 1 {
-		return Payload{DataType: string(ERROR), Str: "Missing arguments for command"}
+		return resp.Payload{DataType: string(resp.ERROR), Str: "Missing arguments for command"}
 	}
-	return Payload{DataType: string(STRING), Str: p[0].Bulk}
+	return resp.Payload{DataType: string(resp.STRING), Str: p[0].Bulk}
 }
 
-func command(p []Payload) Payload {
-	return Payload{DataType: string(ARRAY), Array: []Payload{
-		{DataType: string(BULKSTRING), Bulk: "ECHO"},
-		{DataType: string(BULKSTRING), Bulk: "COMMAND"},
-		{DataType: string(BULKSTRING), Bulk: "PING"},
+func command(p []resp.Payload) resp.Payload {
+	return resp.Payload{DataType: string(resp.ARRAY), Array: []resp.Payload{
+		{DataType: string(resp.BULKSTRING), Bulk: "ECHO"},
+		{DataType: string(resp.BULKSTRING), Bulk: "COMMAND"},
+		{DataType: string(resp.BULKSTRING), Bulk: "PING"},
 	}}
 }
 
-func set(p []Payload) Payload {
+func set(p []resp.Payload) resp.Payload {
 
 	key := p[0].Bulk
 	value := p[1].Bulk
@@ -144,28 +137,28 @@ func set(p []Payload) Payload {
 	stringMapLock.Lock()
 	defer stringMapLock.Unlock()
 	stringMap[key] = stringValue{value, expire}
-	return Payload{DataType: string(STRING), Str: "OK"}
+	return resp.Payload{DataType: string(resp.STRING), Str: "OK"}
 }
 
-func get(p []Payload) Payload {
+func get(p []resp.Payload) resp.Payload {
 	key := p[0].Bulk
 	stringMapLock.RLock()
 	defer stringMapLock.RUnlock()
 	if _, ok := stringMap[key]; ok {
 		if stringMap[key].expire.IsZero() {
-			return Payload{DataType: string(STRING), Str: stringMap[key].value}
+			return resp.Payload{DataType: string(resp.STRING), Str: stringMap[key].value}
 		}
 		if stringMap[key].expire.Before(time.Now()) {
 			delete(stringMap, key)
-			return NilValue
+			return resp.NilValue
 		}
 
-		return Payload{DataType: string(STRING), Str: stringMap[key].value}
+		return resp.Payload{DataType: string(resp.STRING), Str: stringMap[key].value}
 	}
-	return NilValue
+	return resp.NilValue
 }
 
-func exist(p []Payload) Payload {
+func exist(p []resp.Payload) resp.Payload {
 	stringMapLock.RLock()
 	defer stringMapLock.RUnlock()
 
@@ -181,10 +174,10 @@ func exist(p []Payload) Payload {
 			}
 		}
 	}
-	return Payload{DataType: string(INTEGER), Num: count}
+	return resp.Payload{DataType: string(resp.INTEGER), Num: count}
 }
 
-func del(p []Payload) Payload {
+func del(p []resp.Payload) resp.Payload {
 	stringMapLock.Lock()
 	defer stringMapLock.Unlock()
 
@@ -197,10 +190,10 @@ func del(p []Payload) Payload {
 			count++
 		}
 	}
-	return Payload{DataType: string(INTEGER), Num: count}
+	return resp.Payload{DataType: string(resp.INTEGER), Num: count}
 }
 
-func incr(p []Payload) Payload {
+func incr(p []resp.Payload) resp.Payload {
 	stringMapLock.Lock()
 	defer stringMapLock.Unlock()
 
@@ -221,12 +214,12 @@ func incr(p []Payload) Payload {
 	if strValue != "" {
 		countOn64, err := strconv.ParseInt(strValue, 10, 64)
 		if err != nil {
-			return Payload{DataType: string(ERROR), Str: "Key value is not integer"}
+			return resp.Payload{DataType: string(resp.ERROR), Str: "Key value is not integer"}
 		}
 		count = int(countOn64)
 	}
 	count++
 	countStrValue := strconv.Itoa(count)
 	stringMap[key] = stringValue{value: countStrValue}
-	return Payload{DataType: string(INTEGER), Num: count}
+	return resp.Payload{DataType: string(resp.INTEGER), Num: count}
 }

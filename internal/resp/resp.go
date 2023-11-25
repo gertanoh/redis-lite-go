@@ -1,4 +1,4 @@
-package main
+package resp
 
 import (
 	"bufio"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 )
 
 // Module to serialize and deserialize RESP protocol messages
@@ -192,4 +193,12 @@ func (w *RespWriter) Write(p *Payload) error {
 	}
 	err = w.writer.Flush()
 	return err
+}
+
+func ParseRequest(cmd *Payload) (string, []Payload) {
+	// first bulk string is the command
+	request := strings.ToUpper(cmd.Array[0].Bulk)
+	params := cmd.Array[1:]
+
+	return request, params
 }
