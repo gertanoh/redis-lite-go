@@ -10,7 +10,6 @@ Working server with a few commands.
 
 ## Getting Started
 ### Installation
-Provide step-by-step instructions to install Redis-Lite. For example:
 ```bash
 git clone https://github.com/gertanoh/redis-lite-go.git
 cd redis-lite
