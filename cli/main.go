@@ -8,9 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"strconv"
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"github.com/ger/redis-lite-go/internal/resp"
+
 )
 
 var (
@@ -66,46 +69,83 @@ func WaitForInput(host, port string, conn net.Conn) {
 
 	signal.Notify(sigs, syscall.SIGINT)
 	done := make(chan bool, 1)
+	input := make(chan string)
+
+	writer := resp.NewRespWriter(conn)
+	respReader := resp.NewRespReader(conn)
 
 	// listen to stop signal
 	go func() {
 		<-sigs
-		fmt.Println("receivied sig")
 		done <- true
 	}()
 
-	scanner := bufio.NewScanner(os.Stdin)
+	// go routine to listen for input
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for {
+			fmt.Print(host, ":", port, "> ")
+			if scanner.Scan() {
+				input <- scanner.Text()
+			} else {
+				done <- true
+				break
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-done:
 			return
-		default:
-			fmt.Print(host, ":", port, ">")
-
-			scanner.Scan()
-			// TODO use go routine and channels to get here when there is command
-			command := scanner.Text()
-
+		case command := <-input:
 			if strings.ToLower(command) == "exit" || strings.ToLower(command) == "quit" {
 				return
 			}
 
-			fmt.Println("command : ", command)
+			parts := strings.Fields(command)
+			var commandStr string
+
+			var cmdPayload Payload
+			for _, part := range parts {
+				p := Payload{DataType: BULKSTRING, Bulk: part}
+				p = append(cmdPayload, p)
+			}
+
+			fmt.Println()
+
+			cmdPayload.DataType = ARRAY
+
 			// Send the command to Redis
-			fmt.Fprintf(conn, command+"\r\n")
+			err := writer.WriteArray(cmdPayload)
+			if err != nil {
+				fmt.Println("Error writing array:", err)
+				continue
+			}
 
 			// Read the response
-			response, err := bufio.NewReader(conn).ReadString('\n')
+			cmd, err := respReader.Read()
 			if err != nil {
 				fmt.Println("Error reading response:", err)
 				continue
 			}
 
+			if cmd.DataType == ERROR {
+				fmt.Println("Error:", cmd.Str)
+				continue
+			}
+			if cmd.DataType == BULKSTRING {
+				fmt.Println(cmd.Str)
+				continue
+			}
+			if cmdPayload.DataType == INTEGER {
+				fmt.Println(cmd.Num)
+				continue
+			}
 			// Print the response
 			fmt.Println(response)
-
+			fmt.Print(host, ":", port, "> ")
 			// TODO format request and response
 		}
 	}
-
 }

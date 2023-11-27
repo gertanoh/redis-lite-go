@@ -27,7 +27,7 @@ type Payload struct {
 	Array    []Payload
 }
 
-var NilValue = Payload{DataType: string(ARRAY), Str: "_"}
+var NilValue = Payload{DataType: string(ARRAY), Bulk: "-1"}
 
 type RespReader struct {
 	reader bufio.Reader

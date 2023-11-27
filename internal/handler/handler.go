@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
 	"github.com/ger/redis-lite-go/internal/resp"
 )
 
@@ -22,7 +21,6 @@ var handlers = map[string]func([]resp.Payload) resp.Payload{
 	"INCR":    incr,
 	"HSET":    hset,
 	"HGET":    hget,
-	"HGETALL": hgetall,
 }
 
 type stringValue struct {
@@ -62,7 +60,7 @@ func processRequest(cmd *resp.Payload, aof *Aof) resp.Payload {
 	}
 
 	request, params := resp.ParseRequest(cmd)
-	if request == "SET" || request == "INCR" {
+	if request == "SET" || request == "INCR" || request == "HSET" {
 		aof.Write(cmd)
 	}
 
@@ -241,27 +239,31 @@ func hset(p []resp.Payload) resp.Payload {
 	defer hashMapLock.Unlock()
 	for i := 1; i < len(p); i += 2 {
 		key := p[i].Bulk
-		value := p[i+1].Bulk
 		var expire time.Time
-		hashMap[hashKey][key] = stringValue{value, expire}
+		value := stringValue{p[i+1].Bulk, expire}
+		if _, ok := hashMap[hashKey]; !ok {
+			hashMap[hashKey] = map[string]stringValue{}
+		}
+		hashMap[hashKey][key] = value
 		count++
 	}
 	return resp.Payload{DataType: string(resp.INTEGER), Num: count}
 }
 
 func hget(p []resp.Payload) resp.Payload {
+
+	if (len(p) < 2) {
+		return resp.Payload{DataType: string(resp.ERROR), Str: "Missing arguments for command"}
+	}
 	hashKey := p[0].Bulk
+	mapKey := p[1].Bulk
+
 	hashMapLock.RLock()
 	defer hashMapLock.RUnlock()
-	if _, ok := hashMap[key]; ok {
-		if _, ok := hashMap[key]; ok {
-
-		if stringMap[key].expire.Before(time.Now()) {
-			delete(stringMap, key)
-			return resp.NilValue
+	if _, ok := hashMap[hashKey]; ok {
+		if _, ok := hashMap[hashKey][mapKey]; ok {
+			return resp.Payload{DataType: string(resp.STRING), Str: hashMap[hashKey][mapKey].value}
 		}
-
-		return resp.Payload{DataType: string(resp.STRING), Str: stringMap[key].value}
 	}
 	return resp.NilValue
 }
