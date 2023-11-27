@@ -20,6 +20,9 @@ var handlers = map[string]func([]resp.Payload) resp.Payload{
 	"EXISTS":  exist,
 	"DEL":     del,
 	"INCR":    incr,
+	"HSET":    hset,
+	"HGET":    hget,
+	"HGETALL": hgetall,
 }
 
 type stringValue struct {
@@ -28,7 +31,10 @@ type stringValue struct {
 }
 
 var stringMap = map[string]stringValue{}
+var hashMap = map[string]map[string]stringValue{}
+
 var stringMapLock sync.RWMutex
+var hashMapLock sync.RWMutex
 
 func updateInMemoryStore(request string, params []resp.Payload) resp.Payload {
 	var response resp.Payload
@@ -113,6 +119,9 @@ func command(p []resp.Payload) resp.Payload {
 		{DataType: string(resp.BULKSTRING), Bulk: "ECHO"},
 		{DataType: string(resp.BULKSTRING), Bulk: "COMMAND"},
 		{DataType: string(resp.BULKSTRING), Bulk: "PING"},
+		{DataType: string(resp.BULKSTRING), Bulk: "HGET"},
+		{DataType: string(resp.BULKSTRING), Bulk: "HSET"},
+		{DataType: string(resp.BULKSTRING), Bulk: "HGETALL"},
 	}}
 }
 
@@ -222,4 +231,37 @@ func incr(p []resp.Payload) resp.Payload {
 	countStrValue := strconv.Itoa(count)
 	stringMap[key] = stringValue{value: countStrValue}
 	return resp.Payload{DataType: string(resp.INTEGER), Num: count}
+}
+
+func hset(p []resp.Payload) resp.Payload {
+	var count int
+	hashKey := p[0].Bulk
+
+	hashMapLock.Lock()
+	defer hashMapLock.Unlock()
+	for i := 1; i < len(p); i += 2 {
+		key := p[i].Bulk
+		value := p[i+1].Bulk
+		var expire time.Time
+		hashMap[hashKey][key] = stringValue{value, expire}
+		count++
+	}
+	return resp.Payload{DataType: string(resp.INTEGER), Num: count}
+}
+
+func hget(p []resp.Payload) resp.Payload {
+	hashKey := p[0].Bulk
+	hashMapLock.RLock()
+	defer hashMapLock.RUnlock()
+	if _, ok := hashMap[key]; ok {
+		if _, ok := hashMap[key]; ok {
+
+		if stringMap[key].expire.Before(time.Now()) {
+			delete(stringMap, key)
+			return resp.NilValue
+		}
+
+		return resp.Payload{DataType: string(resp.STRING), Str: stringMap[key].value}
+	}
+	return resp.NilValue
 }
