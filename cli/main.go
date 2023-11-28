@@ -8,12 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"strconv"
 	"syscall"
 
-	"github.com/spf13/cobra"
 	"github.com/ger/redis-lite-go/internal/resp"
-
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -42,7 +40,6 @@ func main() {
 		Use:   "redis-lite-cli",
 		Short: "Redis CLI tool",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Hello from redis-cli")
 			address := fmt.Sprintf("%s:%s", host, port)
 
 			conn, err := net.Dial("tcp", address)
@@ -83,8 +80,8 @@ func WaitForInput(host, port string, conn net.Conn) {
 	// go routine to listen for input
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
+		fmt.Print(host, ":", port, "> ")
 		for {
-			fmt.Print(host, ":", port, "> ")
 			if scanner.Scan() {
 				input <- scanner.Text()
 			} else {
@@ -97,6 +94,7 @@ func WaitForInput(host, port string, conn net.Conn) {
 	for {
 		select {
 		case <-done:
+			fmt.Println()
 			return
 		case command := <-input:
 			if strings.ToLower(command) == "exit" || strings.ToLower(command) == "quit" {
@@ -104,47 +102,50 @@ func WaitForInput(host, port string, conn net.Conn) {
 			}
 
 			parts := strings.Fields(command)
-			var commandStr string
 
-			var cmdPayload Payload
+			var cmdPayload resp.Payload
 			for _, part := range parts {
-				p := Payload{DataType: BULKSTRING, Bulk: part}
-				p = append(cmdPayload, p)
+				fmt.Println(part)
+				p := resp.Payload{DataType: string(resp.BULKSTRING), Bulk: part}
+				cmdPayload.Array = append(cmdPayload.Array, p)
 			}
 
-			fmt.Println()
-
-			cmdPayload.DataType = ARRAY
+			cmdPayload.DataType = string(resp.ARRAY)
 
 			// Send the command to Redis
-			err := writer.WriteArray(cmdPayload)
+			err := writer.Write(&cmdPayload)
 			if err != nil {
-				fmt.Println("Error writing array:", err)
-				continue
+				fmt.Println("(error) Err writing array:", err)
+				// fmt.Print(host, ":", port, "> ")
+
 			}
 
 			// Read the response
 			cmd, err := respReader.Read()
 			if err != nil {
-				fmt.Println("Error reading response:", err)
-				continue
+				fmt.Println("(error) Err reading response:", err)
+				// fmt.Print(host, ":", port, "> ")
+
 			}
 
-			if cmd.DataType == ERROR {
+			if cmd.DataType == string(resp.ERROR) {
 				fmt.Println("Error:", cmd.Str)
-				continue
+				// fmt.Print(host, ":", port, "> ")
+
 			}
-			if cmd.DataType == BULKSTRING {
-				fmt.Println(cmd.Str)
-				continue
+			if cmd.DataType == string(resp.BULKSTRING) {
+				fmt.Println(cmd.Bulk)
+				// fmt.Print(host, ":", port, "> ")
+
 			}
-			if cmdPayload.DataType == INTEGER {
+			if cmdPayload.DataType == string(resp.INTEGER) {
 				fmt.Println(cmd.Num)
-				continue
+				// fmt.Print(host, ":", port, "> ")
+
 			}
 			// Print the response
-			fmt.Println(response)
 			fmt.Print(host, ":", port, "> ")
+
 			// TODO format request and response
 		}
 	}

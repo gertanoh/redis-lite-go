@@ -49,6 +49,8 @@ func NewRespWriter(wr io.Writer) *RespWriter {
 // Array of Bulk strings is expected
 func (r *RespReader) Read() (Payload, error) {
 
+	// debug := make([]byte, 1024)
+	// n, _ := r.reader.Read(debug)
 	firstByte, err := r.reader.ReadByte()
 	if err != nil {
 		if err != io.EOF {
@@ -56,13 +58,14 @@ func (r *RespReader) Read() (Payload, error) {
 		}
 		return Payload{}, err
 	}
+	fmt.Printf("data received : %q\n", firstByte)
 	switch firstByte {
 	case ARRAY:
 		return r.readArray()
 	case BULKSTRING:
 		return r.readBulkString()
 	default:
-		err := fmt.Errorf("unexpected first byte of payload")
+		err := fmt.Errorf("unexpected first byte of payload : %q", firstByte)
 		return Payload{}, err
 	}
 }
@@ -162,6 +165,8 @@ func (p *Payload) WriteArray() []byte {
 	for i := 0; i < len(p.Array); i++ {
 		bytes = append(bytes, p.Array[i].Write()...)
 	}
+
+	fmt.Printf("data sent to redis : %q\n", bytes)
 
 	return bytes
 }

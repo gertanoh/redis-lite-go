@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
 	"github.com/ger/redis-lite-go/internal/resp"
 )
 
@@ -102,14 +103,14 @@ func ping(p []resp.Payload) resp.Payload {
 	if len(p) == 0 {
 		return resp.Payload{DataType: string(resp.STRING), Str: "PONG"}
 	}
-	return resp.Payload{DataType: string(resp.STRING), Str: p[0].Bulk}
+	return resp.Payload{DataType: string(resp.BULKSTRING), Bulk: p[0].Bulk}
 }
 
 func echo(p []resp.Payload) resp.Payload {
 	if len(p) != 1 {
 		return resp.Payload{DataType: string(resp.ERROR), Str: "Missing arguments for command"}
 	}
-	return resp.Payload{DataType: string(resp.STRING), Str: p[0].Bulk}
+	return resp.Payload{DataType: string(resp.BULKSTRING), Bulk: p[0].Bulk}
 }
 
 func command(p []resp.Payload) resp.Payload {
@@ -252,7 +253,7 @@ func hset(p []resp.Payload) resp.Payload {
 
 func hget(p []resp.Payload) resp.Payload {
 
-	if (len(p) < 2) {
+	if len(p) < 2 {
 		return resp.Payload{DataType: string(resp.ERROR), Str: "Missing arguments for command"}
 	}
 	hashKey := p[0].Bulk
@@ -262,7 +263,7 @@ func hget(p []resp.Payload) resp.Payload {
 	defer hashMapLock.RUnlock()
 	if _, ok := hashMap[hashKey]; ok {
 		if _, ok := hashMap[hashKey][mapKey]; ok {
-			return resp.Payload{DataType: string(resp.STRING), Str: hashMap[hashKey][mapKey].value}
+			return resp.Payload{DataType: string(resp.BULKSTRING), Bulk: hashMap[hashKey][mapKey].value}
 		}
 	}
 	return resp.NilValue
