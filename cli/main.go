@@ -116,7 +116,6 @@ func WaitForInput(host, port string, conn net.Conn) {
 			err := writer.Write(&cmdPayload)
 			if err != nil {
 				fmt.Println("(error) Err writing array:", err)
-				// fmt.Print(host, ":", port, "> ")
 
 			}
 
@@ -124,24 +123,22 @@ func WaitForInput(host, port string, conn net.Conn) {
 			cmd, err := respReader.Read()
 			if err != nil {
 				fmt.Println("(error) Err reading response:", err)
-				// fmt.Print(host, ":", port, "> ")
 
 			}
 
 			if cmd.DataType == string(resp.ERROR) {
 				fmt.Println("Error:", cmd.Str)
-				// fmt.Print(host, ":", port, "> ")
 
 			}
 			if cmd.DataType == string(resp.BULKSTRING) {
 				fmt.Println(cmd.Bulk)
-				// fmt.Print(host, ":", port, "> ")
 
 			}
 			if cmdPayload.DataType == string(resp.INTEGER) {
 				fmt.Println(cmd.Num)
-				// fmt.Print(host, ":", port, "> ")
-
+			}
+			if cmdPayload.DataType == string(resp.STRING) {
+				fmt.Println(cmd.Str)
 			}
 			// Print the response
 			fmt.Print(host, ":", port, "> ")

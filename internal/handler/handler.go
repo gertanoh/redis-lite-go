@@ -77,6 +77,7 @@ func HandleConnection(conn net.Conn, aof *Aof) {
 	writer := resp.NewRespWriter(conn)
 
 	for {
+		// Parse payload that follows RESP protocol into payload struct
 		cmd, err := respReader.Read()
 		var response resp.Payload
 
@@ -88,6 +89,12 @@ func HandleConnection(conn net.Conn, aof *Aof) {
 			} else {
 				return
 			}
+		}
+
+		// Array of Bulk strings is expected
+		if (cmd.DataType != string(resp.ARRAY)) || (len(cmd.Array) == 0) {
+			response.DataType = string(resp.ERROR)
+			response.Str = "Invalid request format"
 		} else {
 			response = processRequest(&cmd, aof)
 		}

@@ -58,12 +58,13 @@ func (r *RespReader) Read() (Payload, error) {
 		}
 		return Payload{}, err
 	}
-	fmt.Printf("data received : %q\n", firstByte)
 	switch firstByte {
 	case ARRAY:
 		return r.readArray()
 	case BULKSTRING:
 		return r.readBulkString()
+	case STRING:
+		return r.readString()
 	default:
 		err := fmt.Errorf("unexpected first byte of payload : %q", firstByte)
 		return Payload{}, err
@@ -119,6 +120,18 @@ func (r *RespReader) readBulkString() (Payload, error) {
 	return p, nil
 }
 
+// Expected format +<payload>\r\n
+func (r *RespReader) readString() (Payload, error) {
+	p := Payload{}
+	b, _, err := r.reader.ReadLine()
+	if err != nil {
+		return p, errors.New("wrong payload format. unable to parse size")
+	}
+	p.Str = string(b)
+	p.DataType = string(STRING)
+	return p, nil
+}
+
 func (p *Payload) WriteString() []byte {
 	bytes := make([]byte, 0)
 	bytes = append(bytes, STRING)
@@ -165,9 +178,6 @@ func (p *Payload) WriteArray() []byte {
 	for i := 0; i < len(p.Array); i++ {
 		bytes = append(bytes, p.Array[i].Write()...)
 	}
-
-	fmt.Printf("data sent to redis : %q\n", bytes)
-
 	return bytes
 }
 
