@@ -28,6 +28,7 @@ type Payload struct {
 }
 
 var NilValue = Payload{DataType: string(ARRAY), Bulk: "-1"}
+var NilPayload = Payload{}
 
 type RespReader struct {
 	reader bufio.Reader
@@ -58,6 +59,7 @@ func (r *RespReader) Read() (Payload, error) {
 		}
 		return Payload{}, err
 	}
+	fmt.Printf("first byte : %q\n", firstByte)
 	switch firstByte {
 	case ARRAY:
 		return r.readArray()
@@ -65,6 +67,10 @@ func (r *RespReader) Read() (Payload, error) {
 		return r.readBulkString()
 	case STRING:
 		return r.readString()
+	case ERROR:
+		return r.readError()
+	case INTEGER:
+		return r.readInteger()
 	default:
 		err := fmt.Errorf("unexpected first byte of payload : %q", firstByte)
 		return Payload{}, err
@@ -129,6 +135,33 @@ func (r *RespReader) readString() (Payload, error) {
 	}
 	p.Str = string(b)
 	p.DataType = string(STRING)
+	return p, nil
+}
+
+func (r *RespReader) readError() (Payload, error) {
+	p := Payload{}
+	b, _, err := r.reader.ReadLine()
+	if err != nil {
+		return p, errors.New("wrong payload format. unable to parse size")
+	}
+	p.Str = string(b)
+	p.DataType = string(ERROR)
+	return p, nil
+}
+
+func (r *RespReader) readInteger() (Payload, error) {
+	p := Payload{}
+	b, _, err := r.reader.ReadLine()
+	if err != nil {
+		return p, errors.New("wrong payload format. unable to parse size")
+	}
+	size, _ := strconv.ParseInt(string(b), 10, 64)
+	if size == -1 {
+		return p, errors.New("unable to convert to integer")
+	}
+
+	p.Num = int(size)
+	p.DataType = string(INTEGER)
 	return p, nil
 }
 

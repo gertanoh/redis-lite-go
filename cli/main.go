@@ -83,6 +83,7 @@ func WaitForInput(host, port string, conn net.Conn) {
 		fmt.Print(host, ":", port, "> ")
 		for {
 			if scanner.Scan() {
+
 				input <- scanner.Text()
 			} else {
 				done <- true
@@ -105,7 +106,6 @@ func WaitForInput(host, port string, conn net.Conn) {
 
 			var cmdPayload resp.Payload
 			for _, part := range parts {
-				fmt.Println(part)
 				p := resp.Payload{DataType: string(resp.BULKSTRING), Bulk: part}
 				cmdPayload.Array = append(cmdPayload.Array, p)
 			}
@@ -123,27 +123,30 @@ func WaitForInput(host, port string, conn net.Conn) {
 			cmd, err := respReader.Read()
 			if err != nil {
 				fmt.Println("(error) Err reading response:", err)
-
+			} else if cmd.DataType == "" {
+				fmt.Println("(nil)")
 			}
 
-			if cmd.DataType == string(resp.ERROR) {
-				fmt.Println("Error:", cmd.Str)
-
-			}
-			if cmd.DataType == string(resp.BULKSTRING) {
-				fmt.Println(cmd.Bulk)
-
-			}
-			if cmdPayload.DataType == string(resp.INTEGER) {
-				fmt.Println(cmd.Num)
-			}
-			if cmdPayload.DataType == string(resp.STRING) {
-				fmt.Println(cmd.Str)
-			}
 			// Print the response
+			printRedisServerAnswer(cmd)
 			fmt.Print(host, ":", port, "> ")
 
 			// TODO format request and response
 		}
+	}
+}
+
+func printRedisServerAnswer(cmd resp.Payload) {
+	switch cmd.DataType {
+	case string(resp.ERROR):
+		fmt.Println("Error:", cmd.Str)
+	case string(resp.BULKSTRING):
+		fmt.Println(cmd.Bulk)
+	case string(resp.INTEGER):
+		fmt.Println("(integer) ", cmd.Num)
+	case string(resp.STRING):
+		fmt.Println(cmd.Str)
+	default:
+		fmt.Println("unsupported answer format")
 	}
 }
