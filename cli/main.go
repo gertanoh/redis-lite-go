@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -83,8 +84,12 @@ func WaitForInput(host, port string, conn net.Conn) {
 		fmt.Print(host, ":", port, "> ")
 		for {
 			if scanner.Scan() {
-
-				input <- scanner.Text()
+				line := scanner.Text()
+				if line == "\x0c" { //Ctrl-L
+					clearScreen()
+				} else {
+					input <- line
+				}
 			} else {
 				done <- true
 				break
@@ -149,4 +154,12 @@ func printRedisServerAnswer(cmd resp.Payload) {
 	default:
 		fmt.Println("unsupported answer format")
 	}
+}
+
+func clearScreen() {
+	// Only working on linux
+	cmd := exec.Command("clear")
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+	fmt.Print(host, ":", port, "> ")
 }
