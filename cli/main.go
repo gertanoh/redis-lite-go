@@ -2,17 +2,35 @@ package main
 
 import (
 	"bufio"
+	"embed"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
 	"github.com/ger/redis-lite-go/internal/resp"
 	"github.com/spf13/cobra"
+)
+
+//go:embed "commands-docs"
+var commandsFS embed.FS
+
+const (
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
+	ColorPurple = "\033[35m"
+	ColorCyan   = "\033[36m"
+	ColorWhite  = "\033[37m"
+	ColorReset  = "\033[0m"
 )
 
 var (
@@ -106,7 +124,10 @@ func WaitForInput(host, port string, conn net.Conn) {
 			if strings.ToLower(command) == "exit" || strings.ToLower(command) == "quit" {
 				return
 			}
-
+			if strings.HasPrefix(strings.ToLower(command), "help") {
+				handleHelp(command)
+				continue
+			}
 			parts := strings.Fields(command)
 
 			var cmdPayload resp.Payload
@@ -135,8 +156,6 @@ func WaitForInput(host, port string, conn net.Conn) {
 			// Print the response
 			printRedisServerAnswer(cmd)
 			fmt.Print(host, ":", port, "> ")
-
-			// TODO format request and response
 		}
 	}
 }
@@ -162,4 +181,101 @@ func clearScreen() {
 	cmd.Stdout = os.Stdout
 	cmd.Run()
 	fmt.Print(host, ":", port, "> ")
+}
+
+func handleHelp(help string) {
+	parts := strings.Fields(help)
+	if len(parts) == 1 {
+		fmt.Println("redis-lite-cli", version)
+		fmt.Println("To get help about Redis command type:")
+		fmt.Println("  \"help command\" for help on command")
+		fmt.Println("  \"quit\" to exit")
+		fmt.Print(host, ":", port, "> ")
+		return
+	}
+	for _, p := range parts {
+		if p == "help" {
+			continue
+		}
+		printHelp(p)
+	}
+	fmt.Print(host, ":", port, "> ")
+}
+
+func printHelp(command string) {
+	content, err := fs.ReadFile(commandsFS, filepath.Join("commands-docs", command+".json"))
+	if err != nil {
+		fmt.Println(err)
+		fmt.Println("No known help for this command. Ask for online help")
+		return
+	}
+
+	var data map[string]interface{}
+	err = json.Unmarshal(content, &data)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	command = strings.ToUpper(command)
+	if _, ok := data[command]; !ok {
+		return
+	}
+	fmt.Println()
+	if commandData, ok := data[command].(map[string]interface{}); ok {
+		if summary, ok := commandData["summary"]; ok {
+			fmt.Println(ColorYellow, "  summary: ", ColorReset, summary)
+		}
+		if group, ok := commandData["group"]; ok {
+			fmt.Println(ColorYellow, "  group: ", ColorReset, group)
+
+		}
+		if since, ok := commandData["since"]; ok {
+			fmt.Println(ColorYellow, "  since: ", ColorReset, since)
+		}
+	}
+}
+
+func printArguments(arguments []interface{}) {
+	var ret string
+	for _, arg := range arguments {
+		if argMap, ok := arg.(map[string]interface{}); ok {
+			fmt.Print("    - ")
+			if name, ok := argMap["name"].(string); ok {
+				fmt.Print("Name: ", name, ", ")
+				if argType, ok := argMap["type"].(string); ok {
+					if argType == "key" {
+						ret += " " + name
+					}
+				}
+				if argMultiple, ok := argMap["multiple"].(bool); ok {
+					if argMultiple {
+						ret += " [" + name + "...]"
+					}
+				}
+			}
+			if argType, ok := argMap["type"].(string); ok {
+				fmt.Print("Type: ", argType)
+				if argType == "block" {
+
+				} else {
+					ret += " " + argType
+				}
+			}
+			if subArgs, ok := argMap["arguments"].([]interface{}); ok {
+				fmt.Print(", Sub-Arguments: [")
+				for i, subArg := range subArgs {
+					if subArgMap, ok := subArg.(map[string]interface{}); ok {
+						if i > 0 {
+							fmt.Print("|")
+						}
+						if token, ok := subArgMap["token"].(string); ok {
+							fmt.Print(token)
+						}
+					}
+				}
+				fmt.Print("]")
+			}
+			fmt.Println()
+		}
+	}
 }

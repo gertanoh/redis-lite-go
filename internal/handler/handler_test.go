@@ -17,7 +17,7 @@ func TestPing(t *testing.T) {
 	// Test with a parameter
 	testStr := "hello"
 	response = ping([]resp.Payload{{DataType: string(resp.BULKSTRING), Bulk: testStr}})
-	if response.DataType != string(resp.STRING) || response.Str != testStr {
+	if response.DataType != string(resp.BULKSTRING) || response.Bulk != testStr {
 		t.Errorf("Expected %s, got %s", testStr, response.Str)
 	}
 }
@@ -26,7 +26,7 @@ func TestEcho(t *testing.T) {
 	// Test with valid parameter
 	testStr := "hello"
 	response := echo([]resp.Payload{{DataType: string(resp.BULKSTRING), Bulk: testStr}})
-	if response.DataType != string(resp.STRING) || response.Str != testStr {
+	if response.DataType != string(resp.BULKSTRING) || response.Bulk != testStr {
 		t.Errorf("Expected %s, got %s", testStr, response.Str)
 	}
 
